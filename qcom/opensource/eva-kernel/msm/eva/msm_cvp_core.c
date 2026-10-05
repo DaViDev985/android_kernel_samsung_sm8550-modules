@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/dma-direction.h>
@@ -302,12 +303,24 @@ static void msm_cvp_cleanup_instance(struct msm_cvp_inst *inst)
 	struct msm_cvp_frame *frame;
 	struct cvp_session_queue *sq, *sqf;
 	struct cvp_hfi_device *hdev;
+	struct msm_cvp_core *core = NULL;
 
 	if (!inst) {
 		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
 		return;
 	}
 
+	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	if (!core) {
+		dprintk(CVP_ERR, "%s: core is NULL", __func__);
+		return;
+	}
+	inst = cvp_get_inst_validate(core, inst);
+	if (!inst) {
+		dprintk(CVP_ERR, "%s has a invalid session %llx\n",
+			__func__, inst);
+		return;
+	}
 	sqf = &inst->session_queue_fence;
 	sq = &inst->session_queue;
 
@@ -371,6 +384,7 @@ wait_frame:
 		hdev = inst->core->device;
 		call_hfi_op(hdev, pm_qos_update, hdev->hfi_device_data);
 	}
+	cvp_put_inst(inst);
 }
 
 int msm_cvp_destroy(struct msm_cvp_inst *inst)
@@ -414,7 +428,7 @@ int msm_cvp_destroy(struct msm_cvp_inst *inst)
 	pr_info(
 		CVP_DBG_TAG
 		"closed cvp instance: %pK session_id = %d type %d %d\n",
-		inst->proc_name, inst, hash32_ptr(inst->session),
+		inst->proc_name, inst, inst->sess_id,
 		inst->session_type, core->smem_leak_count);
 	inst->session = (void *)0xdeadbeef;
 	if (atomic_read(&inst->smem_count) > 0) {
